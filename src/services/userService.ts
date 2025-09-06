@@ -1,13 +1,12 @@
 import axios from 'axios';
 
-const API_URL = 'https://sdb1.onrender.com';
+const API_URL = 'http://localhost:4000';
 
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT automatically
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -20,7 +19,7 @@ interface UserData {
 }
 
 export const userService = {
-  // Profile
+  // Profile - Modified to show how the expiry date is fetched
   getUserProfile: () => api.get('/user/profile'),
   updateProfile: (userData: UserData) => api.put('/user/profile', userData),
 
@@ -44,4 +43,8 @@ export const userService = {
 
   // Usage stats
   getUsageStats: () => api.get('/user/usage-stats'),
+
+  // New Free Trial APIs
+  activateFreeTrial: (email: string) => api.post('/user/activate-free-trial', { email }),
+  offerFreeTrial: (email: string) => api.post('/servicenow/offer-free-trial', { email }),
 };

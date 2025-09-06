@@ -15,13 +15,15 @@ function Trackers() {
   const location = useLocation();
 
   useEffect(() => {
-    // --- Overall website usage (global) ---
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
     let websiteSeconds = 0;
     const websiteTimer = setInterval(() => {
-      if (document.hidden) return; // pause when tab not visible
+      if (document.hidden) return;
       websiteSeconds += 1;
       if (websiteSeconds % 60 === 0) {
-        userService.updateWebsiteUsage({ minutesSpent: 1 }).catch(() => {});
+        userService.updateWebsiteUsage({ minutesSpent: 1 }).catch(() => { });
       }
     }, 1000);
 
@@ -29,16 +31,18 @@ function Trackers() {
   }, []);
 
   useEffect(() => {
-    // --- Learning time (only on course pages) ---
     const onCoursePage = /^\/course\/[^/]+$/.test(location.pathname);
     if (!onCoursePage) return;
 
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
     let learningSeconds = 0;
     const learningTimer = setInterval(() => {
-      if (document.hidden) return; // pause when tab not visible
+      if (document.hidden) return;
       learningSeconds += 1;
       if (learningSeconds % 60 === 0) {
-        userService.updateLearningTime({ minutesSpent: 1 }).catch(() => {});
+        userService.updateLearningTime({ minutesSpent: 1 }).catch(() => { });
       }
     }, 1000);
 
@@ -52,7 +56,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      userService.updateLoginHistory().catch(() => {});
+      userService.updateLoginHistory().catch(() => { });
     }
   }, []);
 

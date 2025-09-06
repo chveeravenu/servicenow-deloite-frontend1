@@ -113,7 +113,7 @@ const Courses = () => {
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
               >
                 <div className="course-price">
-                  {course.isPremium ? `$${course.price}` : 'Free'}
+                  {course.isPremium ? 'Premium' : 'Free'}
                 </div>
                 <Link
                   to={`/course/${course._id}`}

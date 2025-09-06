@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Play, Clock, Users, Star, CheckCircle, Lock, User, X, Mail, AlertTriangle } from 'lucide-react';
+import { Play, Clock, Users, Star, CheckCircle, Lock, User, X, Mail, AlertTriangle, Check } from 'lucide-react';
 import { courseService } from '../services/courseService';
 import { userService } from '../services/userService';
 import axios from 'axios';
@@ -10,14 +10,47 @@ const CourseDetail = () => {
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [progress, setProgress] = useState(0); 
+  const [progress, setProgress] = useState(0);
   const [currentVideo, setCurrentVideo] = useState(null);
   const [currentLesson, setCurrentLesson] = useState(null);
   const [showPremiumOverlay, setShowPremiumOverlay] = useState(false);
   const [completedLessons, setCompletedLessons] = useState(new Set());
   const [totalLessons, setTotalLessons] = useState(0);
-  
-  // OTP Modal states
+
+  const [isFreeTrialActive, setIsFreeTrialActive] = useState(false); // New state for free trial
+  const [freeTrialExpiry, setFreeTrialExpiry] = useState(null); // New state for expiry date
+  const [timeLeft, setTimeLeft] = useState(''); // New state for the countdown timer
+  const intervalRef = useRef(null); // Ref to hold the timer interval
+
+  const [subscriptionPlans, setSubs] = useState([
+    {
+      id: '1month',
+      duration: '1 Month Access',
+      price: 499,
+      monthlyRate: '₹499/month',
+      description: 'Basic'
+    },
+    {
+      id: '3months',
+      duration: '3 Months Access',
+      price: 1299,
+      originalPrice: 1497,
+      savings: 13,
+      monthlyRate: '₹433/month',
+      description: 'Popular',
+      popular: true
+    },
+    {
+      id: '6months',
+      duration: '6 Months Access',
+      price: 2299,
+      originalPrice: 2994,
+      savings: 23,
+      monthlyRate: '₹383/month',
+      description: 'Best Value'
+    }
+  ]);
+
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [otp, setOtp] = useState('');
   const [generatedOTP, setGeneratedOTP] = useState('');
@@ -26,16 +59,35 @@ const CourseDetail = () => {
   const [otpError, setOtpError] = useState('');
   const [otpSent, setOtpSent] = useState(false);
 
-  // New states for cancellation
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [isSubmittingCancellation, setIsSubmittingCancellation] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState('');
 
+  const [selectedPlan, setSelectedPlan] = useState('6months');
+
   const videoRef = useRef(null);
   const progressUpdateTimeout = useRef(null);
   const watchTimeRef = useRef(0);
   const lastProgressUpdateRef = useRef(0);
+
+  // Function to calculate and format the time left
+  const calculateTimeLeft = (expiryDate) => {
+    const now = new Date().getTime();
+    const expiry = new Date(expiryDate).getTime();
+    const difference = expiry - now;
+
+    if (difference <= 0) {
+      clearInterval(intervalRef.current);
+      setIsFreeTrialActive(false); // Expire the trial on the frontend
+      return 'Expired';
+    }
+
+    const hours = Math.floor(difference / (1000 * 60 * 60));
+    const minutes = Math.floor((difference / (1000 * 60)) % 60);
+    const seconds = Math.floor((difference / 1000) % 60);
+    return `${hours}h ${minutes}m ${seconds}s`;
+  };
 
   useEffect(() => {
     if (id) {
@@ -43,22 +95,19 @@ const CourseDetail = () => {
     }
   }, [id]);
 
-  // Enhanced YouTube progress tracking
   useEffect(() => {
     const iframe = videoRef.current;
-    if (iframe && currentLesson && isEnrolled) {
-      
+    if (iframe && currentLesson && (isEnrolled || isFreeTrialActive)) {
+
       const handleMessage = (event) => {
         if (event.origin !== 'https://www.youtube.com') return;
-        
+
         try {
           const data = JSON.parse(event.data);
-          
-          // Handle different YouTube API events
+
           if (data.event === 'video-progress') {
             handleVideoProgress(data.info);
           } else if (data.info && typeof data.info === 'object') {
-            // Handle direct progress data
             if (data.info.currentTime !== undefined && data.info.duration !== undefined) {
               handleVideoProgress(data.info);
             }
@@ -69,25 +118,34 @@ const CourseDetail = () => {
       };
 
       window.addEventListener('message', handleMessage);
-      
-      // Also set up periodic progress checking for YouTube videos
+
       const progressInterval = setInterval(() => {
         if (iframe && iframe.contentWindow) {
           try {
-            // Try to get video progress via postMessage
             iframe.contentWindow.postMessage('{"event":"listening"}', 'https://www.youtube.com');
           } catch (error) {
             console.log('Could not communicate with YouTube iframe');
           }
         }
-      }, 10000); // Check every 10 seconds
-      
+      }, 10000);
+
       return () => {
         window.removeEventListener('message', handleMessage);
         clearInterval(progressInterval);
       };
     }
-  }, [currentLesson, isEnrolled]);
+  }, [currentLesson, isEnrolled, isFreeTrialActive]);
+
+  // NEW: Effect for the countdown timer
+  useEffect(() => {
+    if (isFreeTrialActive && freeTrialExpiry) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft(calculateTimeLeft(freeTrialExpiry));
+      }, 1000);
+    }
+
+    return () => clearInterval(intervalRef.current);
+  }, [isFreeTrialActive, freeTrialExpiry]);
 
   const loadCourseAndEnrollmentStatus = async (courseId) => {
     try {
@@ -96,44 +154,48 @@ const CourseDetail = () => {
       const fetchedCourse = courseResponse.data.course;
       setCourse(fetchedCourse);
 
-      // Calculate total lessons
       const totalLessonCount = fetchedCourse.modules?.reduce((total, module) => {
         return total + (module.lessons?.length || 0);
       }, 0) || 0;
       setTotalLessons(totalLessonCount);
 
-      const userEmail = localStorage.getItem('emai'); // Note: you have 'emai' instead of 'email'
-      
+      const userEmail = localStorage.getItem('emai');
+
       if (userEmail) {
         try {
-          const enrollmentResponse = await axios.post("https://sdb1.onrender.com/user/coursechec", {
+          // Correct API URL
+          const enrollmentResponse = await axios.post("http://localhost:4000/user/coursechec", {
             courseId: courseId,
             email: userEmail
           });
-          
+
           console.log('Enrollment check response:', enrollmentResponse.data);
-          
-          if (enrollmentResponse.data.success && enrollmentResponse.data.isEnrolled) {
-            setIsEnrolled(true);
+
+          if (enrollmentResponse.data.success) {
+            setIsEnrolled(enrollmentResponse.data.isEnrolled);
+            setIsFreeTrialActive(enrollmentResponse.data.isFreeTrialActive);
+            setFreeTrialExpiry(enrollmentResponse.data.freeTrialExpiry);
             setProgress(enrollmentResponse.data.progress || 0);
-            
-            // Set completed lessons if available
+
             if (enrollmentResponse.data.completedLessons && Array.isArray(enrollmentResponse.data.completedLessons)) {
               setCompletedLessons(new Set(enrollmentResponse.data.completedLessons));
             }
           } else {
             setIsEnrolled(false);
+            setIsFreeTrialActive(false);
+            setFreeTrialExpiry(null);
             setProgress(0);
             setCompletedLessons(new Set());
           }
-          
+
         } catch (enrollmentError) {
           console.error('Error checking enrollment status:', enrollmentError);
           setIsEnrolled(false);
+          setIsFreeTrialActive(false);
+          setFreeTrialExpiry(null);
         }
       }
 
-      // Set initial video
       if (fetchedCourse.previewVideo) {
         setCurrentVideo(fetchedCourse.previewVideo);
       } else {
@@ -159,14 +221,16 @@ const CourseDetail = () => {
   const sendOTP = async () => {
     setOtpSending(true);
     setOtpError('');
-    
+
     try {
       const userEmail = localStorage.getItem('emai');
-      const response = await axios.post("https://sdb1.onrender.com/mailer/", {
+      const selectedPlanData = subscriptionPlans.find(p => p.id === selectedPlan);
+      const response = await axios.post("http://localhost:4000/mailer/", {
         email: userEmail,
-        courseTitle: course.title
+        courseTitle: course.title,
+        planDetails: selectedPlanData
       });
-      
+
       if (response.data.success) {
         setGeneratedOTP(response.data.otp);
         setOtpSent(true);
@@ -187,34 +251,40 @@ const CourseDetail = () => {
       setOtpError('Please enter OTP');
       return;
     }
-    
+
     if (otp !== generatedOTP) {
       setOtpError('Invalid OTP. Please try again.');
       return;
     }
-    
+
     setOtpVerifying(true);
     setOtpError('');
-    
     try {
-      // Enroll in premium course
-      const response = await axios.post("https://sdb1.onrender.com/user/courseup", {
+      const selectedPlanData = subscriptionPlans.find(p => p.id === selectedPlan);
+      // Enroll in premium course with selected plan
+      const response = await axios.post("http://localhost:4000/user/courseup", {
         courseId: course._id,
-        email: localStorage.getItem('emai')
+        email: localStorage.getItem('emai'),
+        subscriptionPlan: selectedPlanData
       });
-      
+
       console.log('Enrollment API response:', response.data);
-      
+
       if (response.data.success) {
-        // Close modal and reload enrollment status
         setShowOTPModal(false);
         setOtp('');
         setOtpSent(false);
         setGeneratedOTP('');
         await loadCourseAndEnrollmentStatus(id);
+
       } else {
         setOtpError('Enrollment failed. Please try again.');
       }
+      const abc = await axios.post("http://localhost:4000/Rod/", {
+        courseId: course._id,
+        email: localStorage.getItem('emai'),
+        subscriptionPlan: selectedPlanData
+      });
     } catch (error) {
       console.error('Error enrolling in course:', error);
       setOtpError('Enrollment failed. Please try again.');
@@ -224,7 +294,8 @@ const CourseDetail = () => {
   };
 
   const handleLessonClick = (lesson, isPremiumCourse, moduleIndex, lessonIndex) => {
-    if (!lesson.isPreview && isPremiumCourse && !isEnrolled) {
+    // Corrected logic: Check if it's a premium course AND the user is not enrolled AND the free trial is not active
+    if (!lesson.isPreview && isPremiumCourse && !isEnrolled && !isFreeTrialActive) {
       setShowPremiumOverlay(true);
     } else {
       if (lesson.videoUrl) {
@@ -236,12 +307,10 @@ const CourseDetail = () => {
           lessonId: `${moduleIndex}-${lessonIndex}`
         });
         setShowPremiumOverlay(false);
-        
-        // Reset watch time for new lesson
+
         watchTimeRef.current = 0;
         lastProgressUpdateRef.current = 0;
-        
-        // Update last accessed
+
         if (isEnrolled) {
           updateLastAccessed();
         }
@@ -252,27 +321,25 @@ const CourseDetail = () => {
   };
 
   const handleVideoProgress = (progressInfo) => {
+    // Only track progress if enrolled in the course, not for free trial
     if (!currentLesson || !isEnrolled) return;
 
     const { currentTime, duration } = progressInfo;
-    
+
     if (!currentTime || !duration || duration === 0) return;
 
     const watchPercentage = (currentTime / duration) * 100;
-    
-    // Update watch time (increment based on time difference)
+
     const timeDifference = Math.max(0, currentTime - lastProgressUpdateRef.current);
-    if (timeDifference > 0 && timeDifference < 30) { // Reasonable time jump (less than 30 seconds)
+    if (timeDifference > 0 && timeDifference < 30) {
       watchTimeRef.current += timeDifference;
     }
     lastProgressUpdateRef.current = currentTime;
 
-    // Consider lesson completed if watched 80% or more
     if (watchPercentage >= 80) {
       markLessonComplete(currentLesson.lessonId);
     }
 
-    // Update progress periodically (every 30 seconds of watch time)
     if (Math.floor(watchTimeRef.current) % 30 === 0 && watchTimeRef.current > 0) {
       updateWatchTime();
     }
@@ -289,21 +356,20 @@ const CourseDetail = () => {
 
     console.log(`Marking lesson ${lessonId} complete. Progress: ${newProgress}%`);
 
-    // Update progress on backend
     try {
-      const response = await axios.post("https://sdb1.onrender.com/user/updateprogress", {
+      // Correct API URL
+      const response = await axios.post("http://localhost:4000/user/updateprogress", {
         courseId: id,
         email: localStorage.getItem('emai'),
         progress: newProgress,
         completedLessons: Array.from(newCompletedLessons),
         lastAccessed: new Date().toISOString(),
-        watchTime: Math.round(watchTimeRef.current / 60) // Convert to minutes
+        watchTime: Math.round(watchTimeRef.current / 60)
       });
-      
+
       console.log('Progress updated successfully:', response.data);
     } catch (error) {
       console.error('Error updating progress:', error);
-      // Revert the state if the API call failed
       setCompletedLessons(completedLessons);
       setProgress(progress);
     }
@@ -313,10 +379,11 @@ const CourseDetail = () => {
     if (!isEnrolled || !currentLesson) return;
 
     try {
-      await axios.post("https://sdb1.onrender.com/user/updateprogress", {
+      // Correct API URL
+      await axios.post("http://localhost:4000/user/updateprogress", {
         courseId: id,
         email: localStorage.getItem('emai'),
-        watchTime: Math.round(watchTimeRef.current / 60), // Convert to minutes
+        watchTime: Math.round(watchTimeRef.current / 60),
         lastAccessed: new Date().toISOString()
       });
     } catch (error) {
@@ -331,7 +398,8 @@ const CourseDetail = () => {
 
     progressUpdateTimeout.current = setTimeout(async () => {
       try {
-        await axios.post("https://sdb1.onrender.com/user/updateaccess", {
+        // Correct API URL
+        await axios.post("http://localhost:4000/user/updateaccess", {
           courseId: id,
           email: localStorage.getItem('emai'),
           lastAccessed: new Date().toISOString()
@@ -339,26 +407,24 @@ const CourseDetail = () => {
       } catch (error) {
         console.error('Error updating last accessed:', error);
       }
-    }, 2000); // Update after 2 seconds of inactivity
+    }, 2000);
   };
 
   const handleEnroll = async () => {
     try {
       console.log('Enrolling in course:', course._id);
       if (!course.isPremium) {
-        const response = await axios.post("https://sdb1.onrender.com/user/courseup", {
+        const response = await axios.post("http://localhost:4000/user/courseup", {
           courseId: course._id,
           email: localStorage.getItem('emai')
         });
-        
+
         console.log('Enrollment API response:', response.data);
-        
+
         if (response.data.success) {
-          // Reload enrollment status
           await loadCourseAndEnrollmentStatus(id);
         }
       } else {
-        // Open OTP verification popup for premium courses
         setShowOTPModal(true);
         setOtp('');
         setOtpError('');
@@ -400,8 +466,8 @@ const CourseDetail = () => {
     try {
       const email = localStorage.getItem('emai');
       const courseId = course._id;
-
-      const response = await axios.post("https://sdb1.onrender.com/cancellation/submit", {
+      // Correct API URL
+      const response = await axios.post("http://localhost:4000/cancellation/submit", {
         email,
         courseId,
         reason: cancellationReason
@@ -409,7 +475,7 @@ const CourseDetail = () => {
 
       if (response.data.success) {
         setCancellationMessage(response.data.message);
-        setTimeout(closeCancelModal, 3000); // Close modal after 3 seconds
+        setTimeout(closeCancelModal, 3000);
       } else {
         setCancellationMessage(response.data.message || 'Failed to submit cancellation.');
       }
@@ -424,7 +490,6 @@ const CourseDetail = () => {
   const getProperVideoUrl = (url) => {
     if (!url) return null;
     if (url.includes('/embed/')) {
-      // Add enablejsapi parameter for progress tracking
       return url.includes('?') ? `${url}&enablejsapi=1` : `${url}?enablejsapi=1`;
     }
     let videoId = null;
@@ -443,9 +508,8 @@ const CourseDetail = () => {
     return completedLessons.has(`${moduleIndex}-${lessonIndex}`);
   };
 
-  // Manual lesson completion for testing
   const handleManualComplete = () => {
-    if (currentLesson && isEnrolled) {
+    if (currentLesson && (isEnrolled || isFreeTrialActive)) {
       markLessonComplete(currentLesson.lessonId);
     }
   };
@@ -473,6 +537,21 @@ const CourseDetail = () => {
   return (
     <>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+        {/* NEW: Free Trial countdown banner */}
+        {isFreeTrialActive && timeLeft && (
+          <div style={{
+            background: 'linear-gradient(135deg, #10b981, #34d399)',
+            color: 'white',
+            padding: '1rem',
+            marginBottom: '2rem',
+            borderRadius: '12px',
+            textAlign: 'center',
+            fontWeight: '600',
+            boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)'
+          }}>
+            Your free trial is active! Time remaining: {timeLeft}
+          </div>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
           <div>
             <div className="video-container">
@@ -502,9 +581,8 @@ const CourseDetail = () => {
                     allowFullScreen
                     style={{ borderRadius: '12px' }}
                   ></iframe>
-                  
-                  {/* Debug/Manual Complete Button */}
-                  {isEnrolled && currentLesson && (
+
+                  {(isEnrolled || isFreeTrialActive) && currentLesson && (
                     <button
                       onClick={handleManualComplete}
                       style={{
@@ -533,9 +611,8 @@ const CourseDetail = () => {
                 />
               )}
             </div>
-            
-            {/* Current Lesson Info */}
-            {currentLesson && isEnrolled && (
+
+            {(isEnrolled || isFreeTrialActive) && currentLesson && (
               <div className="course-detail-container" style={{ padding: '1rem', marginTop: '1rem', marginBottom: '1rem' }}>
                 <h4 style={{ color: '#e2e8f0', fontSize: '1rem', marginBottom: '0.5rem' }}>
                   Now Playing: {currentLesson.title}
@@ -557,7 +634,7 @@ const CourseDetail = () => {
               </div>
             )}
 
-            {isEnrolled && (
+            {(isEnrolled || isFreeTrialActive) && (
               <div className="progress-container" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h4 style={{ color: '#e2e8f0', fontSize: '1rem' }}>Your Progress</h4>
@@ -581,14 +658,14 @@ const CourseDetail = () => {
                 </div>
               </div>
             )}
-            
+
             <div className="course-detail-container" style={{ padding: '2rem', marginBottom: '2rem' }}>
               <h2 style={{ marginBottom: '1rem', color: '#e2e8f0' }}>About This Course</h2>
               <p style={{ lineHeight: 1.8, color: '#94a3b8' }}>
                 {course.detailedDescription || course.description}
               </p>
             </div>
-            
+
             <div className="course-detail-container" style={{ padding: '2rem' }}>
               <h2 style={{ marginBottom: '1rem', color: '#e2e8f0' }}>Course Content</h2>
               {course.modules?.map((module, moduleIndex) => (
@@ -599,7 +676,8 @@ const CourseDetail = () => {
                   {module.lessons.map((lesson, lessonIndex) => {
                     const lessonCompleted = isLessonCompleted(moduleIndex, lessonIndex);
                     const isCurrentLesson = currentLesson?.lessonId === `${moduleIndex}-${lessonIndex}`;
-                    
+                    const isLocked = !lesson.isPreview && course.isPremium && !isEnrolled && !isFreeTrialActive;
+
                     return (
                       <div
                         key={lessonIndex}
@@ -620,13 +698,13 @@ const CourseDetail = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           {lessonCompleted ? (
                             <CheckCircle size={16} color="#10b981" />
-                          ) : lesson.isPreview || !course.isPremium || isEnrolled ? (
-                            <Play size={16} color={lesson.videoUrl ? '#60a5fa' : '#9ca3af'} />
-                          ) : (
+                          ) : isLocked ? (
                             <Lock size={16} color="#9ca3af" />
+                          ) : (
+                            <Play size={16} color={lesson.videoUrl ? '#60a5fa' : '#9ca3af'} />
                           )}
-                          <span style={{ 
-                            color: lesson.isPreview || !course.isPremium || isEnrolled ? '#e2e8f0' : '#94a3b8',
+                          <span style={{
+                            color: isLocked ? '#94a3b8' : '#e2e8f0',
                             fontWeight: isCurrentLesson ? '600' : 'normal'
                           }}>
                             {lesson.title}
@@ -638,8 +716,8 @@ const CourseDetail = () => {
                             {lesson.duration}
                           </span>
                           {isCurrentLesson && (
-                            <span style={{ 
-                              color: '#60a5fa', 
+                            <span style={{
+                              color: '#60a5fa',
                               fontSize: '0.75rem',
                               fontWeight: '600',
                               textTransform: 'uppercase'
@@ -657,7 +735,7 @@ const CourseDetail = () => {
           </div>
           <div>
             <div className="course-detail-container" style={{ padding: '2rem', marginBottom: '2rem', top: '2rem' }}>
-              {isEnrolled ? (
+              {(isEnrolled || isFreeTrialActive) ? (
                 <div style={{ textAlign: 'center' }}>
                   <CheckCircle size={48} color="#10b981" style={{ marginBottom: '1rem' }} />
                   <h3 style={{ color: '#10b981', marginBottom: '1rem' }}>Enrolled!</h3>
@@ -689,23 +767,146 @@ const CourseDetail = () => {
                 </div>
               ) : (
                 <div>
-                  <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                    <div style={{ 
-                      fontSize: '2rem', 
-                      fontWeight: 'bold',
-                      background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      backgroundClip: 'text'
-                    }}>
-                      {course.isPremium ? `$${course.price}` : 'Free'}
+                  {course.isPremium ? (
+                    <div>
+                      <h3 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#e2e8f0', fontSize: '1.25rem' }}>
+                        Choose Your Plan
+                      </h3>
+
+                      {subscriptionPlans && subscriptionPlans.map((plan) => (
+                        <div
+                          key={plan.id}
+                          onClick={() => setSelectedPlan(plan.id)}
+                          style={{
+                            background: selectedPlan === plan.id
+                              ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1))'
+                              : 'rgba(30, 41, 59, 0.3)',
+                            border: selectedPlan === plan.id
+                              ? '2px solid #3b82f6'
+                              : plan.popular
+                                ? '2px solid #8b5cf6'
+                                : '2px solid rgba(71, 85, 105, 0.3)',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '0.75rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease',
+                            position: 'relative'
+                          }}
+                        >
+                          {plan.popular && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '-8px',
+                              right: '12px',
+                              background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+                              color: 'white',
+                              padding: '0.25rem 0.75rem',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: '600'
+                            }}>
+                              {plan.description}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ color: '#e2e8f0', fontSize: '1rem', marginBottom: '0.25rem' }}>
+                                {plan.duration}
+                              </h4>
+                              <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: 0 }}>
+                                {plan.monthlyRate}
+                              </p>
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                color: selectedPlan === plan.id ? '#3b82f6' : '#e2e8f0'
+                              }}>
+                                ₹{plan.price}
+                              </div>
+                              {plan.originalPrice && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <span style={{
+                                    fontSize: '0.875rem',
+                                    color: '#94a3b8',
+                                    textDecoration: 'line-through'
+                                  }}>
+                                    ₹{plan.originalPrice}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    color: '#10b981',
+                                    fontWeight: '600'
+                                  }}>
+                                    Save {plan.savings}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '50%',
+                              border: selectedPlan === plan.id ? '6px solid #3b82f6' : '2px solid #94a3b8',
+                              transition: 'all 0.2s ease'
+                            }} />
+                          </div>
+                        </div>
+                      ))}
+
+                      <div style={{
+                        background: 'rgba(30, 41, 59, 0.5)',
+                        border: '2px solid rgba(71, 85, 105, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                        marginBottom: '1rem',
+                        textAlign: 'center'
+                      }}>
+                        <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: '0 0 0.5rem 0' }}>
+                          Selected: <strong style={{ color: '#e2e8f0' }}>
+                            {subscriptionPlans.find(p => p.id === selectedPlan)?.duration}
+                          </strong>
+                        </p>
+                        <div style={{
+                          fontSize: '1.25rem',
+                          fontWeight: 'bold',
+                          color: '#3b82f6',
+                          marginBottom: '0.5rem'
+                        }}>
+                          Total: ₹{subscriptionPlans.find(p => p.id === selectedPlan)?.price}
+                        </div>
+                        <div style={{
+                          fontSize: '0.75rem',
+                          color: '#94a3b8'
+                        }}>
+                          ✓ Cancel anytime • ✓ 7-day money back
+                        </div>
+                      </div>
                     </div>
-                    {course.isPremium && (
+                  ) : (
+                    <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                      <div style={{
+                        fontSize: '2rem',
+                        fontWeight: 'bold',
+                        background: 'linear-gradient(135deg, #10b981, #34d399)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text',
+                        marginBottom: '0.5rem'
+                      }}>
+                        Free
+                      </div>
                       <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                        One-time payment
+                        No payment required
                       </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
                   {course.isPremium && !localStorage.getItem('token') ? (
                     <div>
                       <p style={{ textAlign: 'center', marginBottom: '1rem', color: '#94a3b8' }}>
@@ -745,18 +946,18 @@ const CourseDetail = () => {
               <hr style={{ margin: '1.5rem 0', border: 'none', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }} />
               <h4 style={{ marginBottom: '1rem', color: '#e2e8f0' }}>Instructor</h4>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ 
-                  width: '60px', 
-                  height: '60px', 
-                  background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', 
-                  borderRadius: '50%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  margin: '0 auto 1rem', 
-                  color: 'white', 
-                  fontSize: '1.2rem', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                  color: 'white',
+                  fontSize: '1.2rem',
+                  fontWeight: 'bold'
                 }}>
                   {course.instructor.charAt(0)}
                 </div>
@@ -770,7 +971,6 @@ const CourseDetail = () => {
         </div>
       </div>
 
-      {/* OTP Verification Modal */}
       {showOTPModal && (
         <div className="modal-backdrop" style={{
           position: 'fixed',
@@ -781,16 +981,21 @@ const CourseDetail = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000
+          zIndex: 1000,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(4px)'
         }}>
           <div className="modal-content" style={{
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+            border: '1px solid rgba(71, 85, 105, 0.3)',
             borderRadius: '16px',
             padding: '2rem',
             maxWidth: '400px',
             width: '90%',
-            position: 'relative'
+            position: 'relative',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
           }}>
-            {/* Close button */}
             <button
               onClick={closeOTPModal}
               style={{
@@ -811,7 +1016,6 @@ const CourseDetail = () => {
               <X size={20} />
             </button>
 
-            {/* Modal content */}
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
               <div style={{
                 width: '60px',
@@ -827,10 +1031,27 @@ const CourseDetail = () => {
                 <Mail size={24} />
               </div>
               <h3 style={{ color: '#e2e8f0', marginBottom: '0.5rem', fontSize: '1.5rem' }}>
-                Verify Your Email
+                Confirm Your Subscription
               </h3>
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid #3b82f6',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginBottom: '1rem'
+              }}>
+                <p style={{ color: '#e2e8f0', fontSize: '1rem', margin: 0, fontWeight: '600' }}>
+                  {subscriptionPlans.find(p => p.id === selectedPlan)?.duration} Plan
+                </p>
+                <p style={{ color: '#3b82f6', fontSize: '1.25rem', margin: '0.25rem 0', fontWeight: 'bold' }}>
+                  ₹{subscriptionPlans.find(p => p.id === selectedPlan)?.price}
+                </p>
+                <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: 0 }}>
+                  {subscriptionPlans.find(p => p.id === selectedPlan)?.monthlyRate}
+                </p>
+              </div>
               <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
-                Please verify your email to enroll in this premium course
+                Please verify your email to complete enrollment
               </p>
             </div>
 
@@ -882,9 +1103,12 @@ const CourseDetail = () => {
                     backdropFilter: 'blur(10px)'
                   }}
                 />
-                
+
                 {otpError && (
-                  <div className="error-message" style={{
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid #ef4444',
+                    color: '#f87171',
                     fontSize: '0.875rem',
                     marginBottom: '1rem',
                     textAlign: 'center',
@@ -915,10 +1139,13 @@ const CourseDetail = () => {
                 <button
                   onClick={sendOTP}
                   disabled={otpSending}
-                  className="btn-outline"
                   style={{
                     width: '100%',
                     padding: '0.5rem',
+                    background: 'transparent',
+                    color: '#94a3b8',
+                    border: '1px solid rgba(71, 85, 105, 0.3)',
+                    borderRadius: '6px',
                     cursor: otpSending ? 'not-allowed' : 'pointer',
                     fontSize: '0.875rem',
                     opacity: otpSending ? 0.6 : 1
@@ -943,15 +1170,21 @@ const CourseDetail = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 1000
+          zIndex: 1000,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(4px)'
         }}>
           <div className="modal-content" style={{
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
+            border: '1px solid rgba(71, 85, 105, 0.3)',
             borderRadius: '16px',
             padding: '2rem',
             maxWidth: '450px',
             width: '90%',
             position: 'relative',
-            textAlign: 'center'
+            textAlign: 'center',
+            backdropFilter: 'blur(10px)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
           }}>
             <button
               onClick={closeCancelModal}
@@ -972,8 +1205,10 @@ const CourseDetail = () => {
             >
               <X size={20} />
             </button>
-            
-            <AlertTriangle size={48} color="#f59e0b" style={{ marginBottom: '1rem', margin: '0 auto' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+              <AlertTriangle size={48} color="#f59e0b" />
+            </div>
             <h3 style={{ color: '#e2e8f0', marginBottom: '0.5rem', fontSize: '1.5rem' }}>
               Confirm Cancellation
             </h3>
@@ -982,11 +1217,21 @@ const CourseDetail = () => {
             </p>
 
             {cancellationMessage && (
-              <div className={cancellationMessage.includes('Failed') ? 'error-message' : 'success-message'} style={{
+              <div style={{
+                backgroundColor: cancellationMessage.includes('Failed') || cancellationMessage.includes('error')
+                  ? 'rgba(239, 68, 68, 0.1)'
+                  : 'rgba(16, 185, 129, 0.1)',
+                border: cancellationMessage.includes('Failed') || cancellationMessage.includes('error')
+                  ? '1px solid #ef4444'
+                  : '1px solid #10b981',
+                color: cancellationMessage.includes('Failed') || cancellationMessage.includes('error')
+                  ? '#f87171'
+                  : '#34d399',
                 fontSize: '0.875rem',
                 marginBottom: '1rem',
-                padding: '0.5rem',
-                borderRadius: '6px'
+                padding: '0.75rem',
+                borderRadius: '8px',
+                textAlign: 'center'
               }}>
                 {cancellationMessage}
               </div>
@@ -1010,7 +1255,8 @@ const CourseDetail = () => {
                     outline: 'none',
                     backgroundColor: 'rgba(15, 23, 42, 0.8)',
                     color: '#e2e8f0',
-                    backdropFilter: 'blur(10px)'
+                    backdropFilter: 'blur(10px)',
+                    fontFamily: 'inherit'
                   }}
                 ></textarea>
                 <button
@@ -1019,13 +1265,16 @@ const CourseDetail = () => {
                   style={{
                     width: '100%',
                     padding: '0.75rem',
-                    background: isSubmittingCancellation || cancellationReason.trim() === '' ? '#9ca3af' : '#e53e3e',
+                    background: isSubmittingCancellation || cancellationReason.trim() === ''
+                      ? 'rgba(156, 163, 175, 0.5)'
+                      : 'linear-gradient(135deg, #ef4444, #dc2626)',
                     color: 'white',
                     border: 'none',
                     borderRadius: '8px',
                     cursor: isSubmittingCancellation || cancellationReason.trim() === '' ? 'not-allowed' : 'pointer',
                     fontSize: '1rem',
-                    fontWeight: '500'
+                    fontWeight: '500',
+                    transition: 'all 0.2s ease'
                   }}
                 >
                   {isSubmittingCancellation ? 'Submitting...' : 'Submit Cancellation'}
