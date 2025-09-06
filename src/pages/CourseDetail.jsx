@@ -164,7 +164,7 @@ const CourseDetail = () => {
       if (userEmail) {
         try {
           // Correct API URL
-          const enrollmentResponse = await axios.post("http://localhost:4000/user/coursechec", {
+          const enrollmentResponse = await axios.post("https://sdb1.onrender.com/user/coursechec", {
             courseId: courseId,
             email: userEmail
           });
@@ -225,7 +225,7 @@ const CourseDetail = () => {
     try {
       const userEmail = localStorage.getItem('emai');
       const selectedPlanData = subscriptionPlans.find(p => p.id === selectedPlan);
-      const response = await axios.post("http://localhost:4000/mailer/", {
+      const response = await axios.post("https://sdb1.onrender.com/mailer/", {
         email: userEmail,
         courseTitle: course.title,
         planDetails: selectedPlanData
@@ -262,7 +262,7 @@ const CourseDetail = () => {
     try {
       const selectedPlanData = subscriptionPlans.find(p => p.id === selectedPlan);
       // Enroll in premium course with selected plan
-      const response = await axios.post("http://localhost:4000/user/courseup", {
+      const response = await axios.post("https://sdb1.onrender.com/user/courseup", {
         courseId: course._id,
         email: localStorage.getItem('emai'),
         subscriptionPlan: selectedPlanData
@@ -280,7 +280,7 @@ const CourseDetail = () => {
       } else {
         setOtpError('Enrollment failed. Please try again.');
       }
-      const abc = await axios.post("http://localhost:4000/Rod/", {
+      const abc = await axios.post("https://sdb1.onrender.com/Rod/", {
         courseId: course._id,
         email: localStorage.getItem('emai'),
         subscriptionPlan: selectedPlanData
@@ -358,7 +358,7 @@ const CourseDetail = () => {
 
     try {
       // Correct API URL
-      const response = await axios.post("http://localhost:4000/user/updateprogress", {
+      const response = await axios.post("https://sdb1.onrender.com/user/updateprogress", {
         courseId: id,
         email: localStorage.getItem('emai'),
         progress: newProgress,
@@ -380,7 +380,7 @@ const CourseDetail = () => {
 
     try {
       // Correct API URL
-      await axios.post("http://localhost:4000/user/updateprogress", {
+      await axios.post("https://sdb1.onrender.com/user/updateprogress", {
         courseId: id,
         email: localStorage.getItem('emai'),
         watchTime: Math.round(watchTimeRef.current / 60),
@@ -399,7 +399,7 @@ const CourseDetail = () => {
     progressUpdateTimeout.current = setTimeout(async () => {
       try {
         // Correct API URL
-        await axios.post("http://localhost:4000/user/updateaccess", {
+        await axios.post("https://sdb1.onrender.com/user/updateaccess", {
           courseId: id,
           email: localStorage.getItem('emai'),
           lastAccessed: new Date().toISOString()
@@ -414,7 +414,7 @@ const CourseDetail = () => {
     try {
       console.log('Enrolling in course:', course._id);
       if (!course.isPremium) {
-        const response = await axios.post("http://localhost:4000/user/courseup", {
+        const response = await axios.post("https://sdb1.onrender.com/user/courseup", {
           courseId: course._id,
           email: localStorage.getItem('emai')
         });
@@ -467,7 +467,7 @@ const CourseDetail = () => {
       const email = localStorage.getItem('emai');
       const courseId = course._id;
       // Correct API URL
-      const response = await axios.post("http://localhost:4000/cancellation/submit", {
+      const response = await axios.post("https://sdb1.onrender.com/cancellation/submit", {
         email,
         courseId,
         reason: cancellationReason

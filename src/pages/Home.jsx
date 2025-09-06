@@ -84,7 +84,7 @@ const Home = () => {
         return;
       }
       const requestData = { ...formData, email: email };
-      await axios.post('http://localhost:4000/tickets', requestData);
+      await axios.post('https://sdb1.onrender.com/tickets', requestData);
       setSubmissionStatus('success');
     } catch (error) {
       console.error('Error submitting ticket:', error);
@@ -134,7 +134,7 @@ const Home = () => {
       }
 
       const requestData = { ...feedbackFormData, email: email };
-      const response = await axios.post('http://localhost:4000/feedback', requestData);
+      const response = await axios.post('https://sdb1.onrender.com/feedback', requestData);
       const isUpdate = response.data.isUpdate;
       setFeedbackSubmissionStatus(isUpdate ? 'updated' : 'success');
       console.log(isUpdate ? 'Feedback updated successfully!' : 'New feedback submitted successfully!');
