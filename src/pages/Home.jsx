@@ -5,6 +5,10 @@ import FeedbackModal from '../components/FeedbackModal';
 import TicketFormModal from '../components/TicketFormModal';
 import FreeTrialOfferModal from '../components/FreeTrialOfferModal';
 import FreeTrialConfirmationModal from '../components/FreeTrialConfirmationModal';
+import PremiumExtensionOfferModal from '../components/PremiumExtensionOfferModal';
+import PremiumExtensionConfirmationModal from '../components/PremiumExtensionConfirmationModal';
+import TimeLimitedDiscountOfferModal from '../components/TimeLimitedDiscountOfferModal';
+import DiscountClaimConfirmationModal from '../components/DiscountClaimConfirmationModal';
 import { userService } from '../services/userService';
 
 const Home = () => {
@@ -22,18 +26,48 @@ const Home = () => {
   const [showFreeTrialConfirmation, setShowFreeTrialConfirmation] = useState(false);
   const [freeTrialExpiry, setFreeTrialExpiry] = useState(null);
 
+  const [showPremiumOffer, setShowPremiumOffer] = useState(false);
+  const [showPremiumConfirmation, setShowPremiumConfirmation] = useState(false);
+
+  const [showDiscountOffer, setShowDiscountOffer] = useState(false);
+  const [showDiscountConfirmation, setShowDiscountConfirmation] = useState(false);
+  const [discountExpiry, setDiscountExpiry] = useState(null);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token) {
-      userService.getUserProfile().then(res => {
+    if (!token) return;
+
+    const checkForOffers = async () => {
+      try {
+        const res = await userService.getUserProfile();
         const user = res.data.user;
+
+        // Check for free trial offer
         if (user.freeTrialStatus === 'offered') {
           setShowFreeTrialOffer(true);
         }
-      }).catch(err => {
-        console.error('Error fetching user profile for free trial:', err);
-      });
-    }
+
+        // Check for premium extension offer
+        const hasClaimedExtension = localStorage.getItem('premiumExtensionClaimed');
+        if (user.premiumExtensionStatus === 'offered' && !hasClaimedExtension) {
+          setShowPremiumOffer(true);
+        }
+
+        // Check for time-limited discount
+        const hasClaimedDiscount = localStorage.getItem('discountClaimed');
+        if (user.discountOfferStatus === 'offered' && !hasClaimedDiscount && user.discountOfferExpiry && new Date(user.discountOfferExpiry) > new Date()) {
+          setShowDiscountOffer(true);
+          setDiscountExpiry(user.discountOfferExpiry);
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for offers:', err);
+      }
+    };
+
+    checkForOffers(); // Initial check
+    const intervalId = setInterval(checkForOffers, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleClaimFreeTrial = async () => {
@@ -49,6 +83,22 @@ const Home = () => {
   };
 
   const closeFreeTrialConfirmation = () => setShowFreeTrialConfirmation(false);
+
+  const handleClaimPremiumExtension = () => {
+    console.log('Premium extension claimed. Updating localStorage.');
+
+    localStorage.setItem('premiumExtensionClaimed', 'true');
+    setShowPremiumOffer(false);
+    setShowPremiumConfirmation(true);
+  };
+
+  const handleClaimDiscount = () => {
+    console.log('Discount claimed. Updating localStorage.');
+
+    localStorage.setItem('discountClaimed', 'true');
+    setShowDiscountOffer(false);
+    setShowDiscountConfirmation(true);
+  };
 
   const handleOpenModal = () => {
     setShowModal(true);
@@ -145,8 +195,10 @@ const Home = () => {
     } finally {
       setIsFeedbackSubmitting(false);
       setTimeout(() => {
-        setFeedbackSubmissionStatus(null);
-        handleCloseFeedbackModal();
+        setSubmissionStatus(null);
+        if (submissionStatus === 'success') {
+          handleCloseModal();
+        }
       }, 3000);
     }
   };
@@ -249,6 +301,7 @@ const Home = () => {
               Experience the future of learning with our innovative platform designed for modern professionals
             </p>
           </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, index) => (
@@ -274,7 +327,6 @@ const Home = () => {
               </div>
             ))}
           </div>
-        </div>
       </section>
 
       <section className="relative px-6 py-24">
@@ -285,27 +337,27 @@ const Home = () => {
             </h2>
             <p className="text-xl text-gray-400">Join our thriving community of successful learners</p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((stat, index) => (
-              <div
-                key={index}
-                className="group relative p-8 text-center bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-3xl border border-gray-700/30 hover:border-blue-500/50 transition-all duration-500 hover:scale-110 backdrop-blur-sm"
-              >
-                <div className="inline-flex p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl mb-4 group-hover:shadow-2xl transition-all duration-300">
-                  <stat.icon size={24} className="text-white" />
-                </div>
-
-                <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 group-hover:bg-gradient-to-r group-hover:from-blue-400 group-hover:to-purple-600 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
-                  {stat.number}
-                </div>
-
-                <div className="text-gray-400 font-medium group-hover:text-gray-300 transition-colors duration-300">
-                  {stat.label}
-                </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          {stats.map((stat, index) => (
+            <div
+              key={index}
+              className="group relative p-8 text-center bg-gradient-to-br from-gray-800/40 to-gray-900/40 rounded-3xl border border-gray-700/30 hover:border-blue-500/50 transition-all duration-500 hover:scale-110 backdrop-blur-sm"
+            >
+              <div className="inline-flex p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl mb-4 group-hover:shadow-2xl transition-all duration-300">
+                <stat.icon size={24} className="text-white" />
               </div>
-            ))}
-          </div>
+
+              <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 group-hover:bg-gradient-to-r group-hover:from-blue-400 group-hover:to-purple-600 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
+                {stat.number}
+              </div>
+
+              <div className="text-gray-400 font-medium group-hover:text-gray-300 transition-colors duration-300">
+                {stat.label}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -332,7 +384,7 @@ const Home = () => {
               </div>
             </div>
           </div>
-        </div>
+          </div>
       </section>
 
       <div className="fixed bottom-8 right-8 flex flex-col gap-4 z-40">
@@ -382,6 +434,27 @@ const Home = () => {
       <FreeTrialConfirmationModal
         show={showFreeTrialConfirmation}
         onClose={closeFreeTrialConfirmation}
+      />
+
+      {/* NEW: Modals for the premium extension and discount feature */}
+      <PremiumExtensionOfferModal
+        show={showPremiumOffer}
+        onClaim={handleClaimPremiumExtension}
+        onClose={() => setShowPremiumOffer(false)}
+      />
+      <PremiumExtensionConfirmationModal
+        show={showPremiumConfirmation}
+        onClose={() => setShowPremiumConfirmation(false)}
+      />
+      <TimeLimitedDiscountOfferModal
+        show={showDiscountOffer}
+        onClaim={handleClaimDiscount}
+        onClose={() => setShowDiscountOffer(false)}
+        expiryDate={discountExpiry}
+      />
+      <DiscountClaimConfirmationModal
+        show={showDiscountConfirmation}
+        onClose={() => setShowDiscountConfirmation(false)}
       />
     </div>
   );

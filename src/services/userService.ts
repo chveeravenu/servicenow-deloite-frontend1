@@ -47,4 +47,8 @@ export const userService = {
   // New Free Trial APIs
   activateFreeTrial: (email: string) => api.post('/user/activate-free-trial', { email }),
   offerFreeTrial: (email: string) => api.post('/servicenow/offer-free-trial', { email }),
+
+  // Add this to userService.ts
+claimPremiumExtension: (payload: { email: string }) =>
+    api.post('/user/claim-premium-extension', payload),
 };

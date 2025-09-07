@@ -262,9 +262,9 @@ body {
 }
 
 .courses-grid {
-  display: grid; 
+  display: grid;
   grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-   gap: 2rem;
+  gap: 2rem;
   /* display: flex;
   flex-direction: column;
   gap: 10px; */
@@ -675,8 +675,13 @@ body {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Additional component-specific styles for consistency */
